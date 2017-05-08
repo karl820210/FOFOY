@@ -172,7 +172,7 @@ __global__ void ScanButtonUp(const char *text, int *pos, int text_size, int *fla
 
 }
 
-__global__ void ScanTopDown(const char *text, int *pos, int text_size, int *flagsDevice, int level, int toplevel, bool *endend, bool *nextSwitch, int *switchIdx)
+__global__ void ScanTopDown(const char *text, int *pos, int text_size, int *flagsDevice, int level, int toplevel, bool *endend, bool *nextSwitch, int *switchIdx, int *posSub)
 {
 	int i = (blockIdx.x * blockDim.x + threadIdx.x + 1) * PowD(BLOCK_SIZE, level) - 1;
 	if (i + 1 > text_size && text_size > i - PowD(BLOCK_SIZE, level) + 1)
@@ -663,41 +663,36 @@ __global__ void ScanTopDown(const char *text, int *pos, int text_size, int *flag
 		syncthreads();
 		pos[i] = sText[idx];
 		flagsDevice[i] = flag[idx];
+
+		if (level == 0)
+		{
+			if (idx == 0 && i != 0)
+				posSub[blockIdx.x - 1] = sText[idx];
+
+			if (i != text_size - 1)
+			{
+				if (idx != BLOCK_SIZE - 1)
+				{
+					pos[i] = sText[idx + 1];
+				}
+			}
+			else
+			{
+				pos[i] = (text[i] != '\n') ? sText[idx] + 1 : 0;
+			}
+		}
 	}
 
 }
 
-__global__ void ScanShift(int *pos, const char *text, int *posD, int text_size)
+__global__ void ScanShift(int *pos, int *posSub, int subSize)
 {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 
-	int idx = threadIdx.x;
-
-	if (i < text_size)
+	if (i < subSize)
 	{
-		__shared__ int sText[BLOCK_SIZE];
-
-		sText[idx] = posD[i];
-
-		syncthreads();
-
-		if (i != text_size - 1)
-		{
-			if (idx == BLOCK_SIZE - 1)
-			{
-				pos[i] = posD[i + 1];
-			}
-			else
-			{
-				pos[i] = sText[idx + 1];
-			}
-		}
-		else
-		{
-			pos[i] = (text[i] != '\n') ? posD[i] + 1 : 0;
-		}
+		pos[(i + 1) * BLOCK_SIZE - 1] = posSub[i];
 	}
-
 }
 
 __global__ void printD(int *pos, int text_size, int level)
@@ -725,17 +720,19 @@ __global__ void printD(int *pos, int text_size, int level)
 
 void CountPosition2(const char *text, int *pos, int text_size)
 {
-	int *flagsDevice, *posDevice;
-	cudaMalloc((void**)&posDevice, sizeof(int) * text_size);
+	int *flagsDevice, *posSub;
 	cudaMalloc((void**)&flagsDevice, sizeof(int) * text_size);
 
 	int totalLevel = ceil(log(text_size) / log(BLOCK_SIZE));
 	int blockNum = ((text_size - 1) / BLOCK_SIZE + 1);
+	int subSize = blockNum - 1;
+	cudaMalloc((void**)&posSub, sizeof(int) * subSize);
+
 	int *blockNumArray = (int*)malloc(sizeof(int) * totalLevel);
 	for (int level = 0; level < totalLevel; level++)
 	{
 		blockNumArray[level] = blockNum;
-		ScanButtonUp << <blockNum, BLOCK_SIZE >> >(text, posDevice, text_size, flagsDevice, level);
+		ScanButtonUp << <blockNum, BLOCK_SIZE >> >(text, pos, text_size, flagsDevice, level);
 		blockNum = ((blockNum - 1) / BLOCK_SIZE + 1);
 	}
 	int *switchIdx;
@@ -746,12 +743,11 @@ void CountPosition2(const char *text, int *pos, int text_size)
 	for (int level = totalLevel - 1; level >= 0; level--)
 	{
 		blockNum = blockNumArray[level];
-		ScanTopDown << <blockNum, BLOCK_SIZE >> >(text, posDevice, text_size, flagsDevice, level, totalLevel, endend, nextSwitch, switchIdx);
+		ScanTopDown << <blockNum, BLOCK_SIZE >> >(text, pos, text_size, flagsDevice, level, totalLevel, endend, nextSwitch, switchIdx, posSub);
 	}
-	ScanShift << <(text_size - 1) / BLOCK_SIZE + 1, BLOCK_SIZE >> >(pos, text, posDevice, text_size);
+	ScanShift << < ((subSize - 1) / BLOCK_SIZE + 1), BLOCK_SIZE >> >(pos, posSub, subSize);
 
 	cudaFree(flagsDevice);
-	cudaFree(posDevice);
 	cudaFree(switchIdx);
 	cudaFree(endend);
 	cudaFree(nextSwitch);
