@@ -14,11 +14,11 @@ __device__ __host__ int CeilAlign(int a, int b) { return CeilDiv(a, b) * b; }
 
 struct notSpace
 {//\n 10
-	__host__ __device__ const __int8 &operator()(const __int8 &x) const { return (x != 10) ? 1 : 0; }
+	__host__ __device__ const char &operator()(const __int8 &x) const { return (x != 10) ? 1 : 0; }
 };
 void CountPosition1(const char *text, int *pos, int text_size)
 {
-	thrust::device_ptr<__int8> charArray((__int8 *)text);
+	thrust::device_ptr<char> charArray((char *)text);
 	thrust::device_ptr<int> intArray(pos);
 	thrust::transform(thrust::device, charArray, charArray + text_size, intArray, notSpace());
 	thrust::inclusive_scan_by_key(thrust::device, intArray, intArray + text_size, intArray, intArray);
