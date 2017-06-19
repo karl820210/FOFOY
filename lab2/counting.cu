@@ -14,7 +14,7 @@ __device__ __host__ int CeilAlign(int a, int b) { return CeilDiv(a, b) * b; }
 
 struct notSpace
 {//\n 10
-	__host__ __device__ const char &operator()(const __int8 &x) const { return (x != 10) ? 1 : 0; }
+	__host__ __device__ const char &operator()(const char &x) const { return (x != 10) ? 1 : 0; }
 };
 void CountPosition1(const char *text, int *pos, int text_size)
 {
@@ -722,13 +722,13 @@ void CountPosition2(const char *text, int *pos, int text_size)
 {
 	int *flagsDevice, *posSub;
 	cudaMalloc((void**)&flagsDevice, sizeof(int) * text_size);
-
 	int totalLevel = ceil(log(text_size) / log(BLOCK_SIZE));
 	int blockNum = ((text_size - 1) / BLOCK_SIZE + 1);
 	int subSize = blockNum - 1;
 	cudaMalloc((void**)&posSub, sizeof(int) * subSize);
 
 	int *blockNumArray = (int*)malloc(sizeof(int) * totalLevel);
+		
 	for (int level = 0; level < totalLevel; level++)
 	{
 		blockNumArray[level] = blockNum;
@@ -752,4 +752,5 @@ void CountPosition2(const char *text, int *pos, int text_size)
 	cudaFree(endend);
 	cudaFree(nextSwitch);
 	free(blockNumArray);
+	
 }
